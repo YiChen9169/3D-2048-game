@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Generated web build for the app (made from index.html by scripts/build-www.mjs)
+www/
+
+# Built apps: upload these to GitHub Releases instead of committing them
+*.apk
+*.aab
+
+# Signing keys: never commit these
+*.jks
+*.keystore
+
+# Machine-specific settings
+local.properties
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
