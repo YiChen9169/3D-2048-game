@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1020">
+<title>3D 2048</title>
+<style>
+  :root{
+    --bg:#0d1020; --panel:rgba(255,255,255,.07); --line:rgba(255,255,255,.14);
+    --text:#e8ebf5; --muted:#9aa3bd; --ok:#5dffa0; --bad:#ff5d6c; --gold:#ffd54d;
+  }
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 40%,#1b2145 0%,var(--bg) 70%);
+    color:var(--text);font-family:system-ui,"Microsoft JhengHei","PingFang TC",sans-serif;overflow:hidden;
+    user-select:none;-webkit-user-select:none;touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+    overscroll-behavior:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #ov{pointer-events:none}
+  #hud{position:fixed;top:calc(env(safe-area-inset-top) + 14px);left:calc(env(safe-area-inset-left) + 16px);right:calc(env(safe-area-inset-right) + 16px);display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;pointer-events:none}
+  .title{font-weight:900;font-size:26px;letter-spacing:.04em;align-self:center;margin-right:6px}
+  .title span{color:var(--gold)}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 14px;min-width:64px;backdrop-filter:blur(6px)}
+  .box small{display:block;color:var(--muted);font-size:11px;letter-spacing:.1em}
+  .box b{font-size:20px;font-variant-numeric:tabular-nums}
+  .spacer{flex:1}
+  button{pointer-events:auto;font:inherit;font-weight:800;letter-spacing:.08em;color:var(--text);
+    background:rgba(255,255,255,.1);border:1px solid var(--line);border-radius:10px;padding:0 18px;min-height:44px;cursor:pointer;transition:.15s}
+  button:hover:not(:disabled){background:rgba(255,255,255,.2)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button{touch-action:manipulation}
+  #reset{border-color:rgba(255,93,108,.5)}
+  #rot.on{background:rgba(94,200,255,.3);border-color:#5ec8ff}
+  #status{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 56px);transform:translateX(-50%);font-size:15px;font-weight:700;
+    padding:6px 14px;border-radius:8px;background:rgba(0,0,0,.35);opacity:0;transition:opacity .15s;white-space:nowrap;pointer-events:none}
+  #status.show{opacity:1}
+  #status.ok{color:var(--ok)} #status.bad{color:var(--bad)}
+  #hint{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 14px);text-align:center;color:var(--muted);font-size:13px;pointer-events:none}
+  #congrats{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    pointer-events:none;opacity:0;transition:opacity .25s}
+  #congrats.show{opacity:1}
+  #congrats h1{margin:0;font-size:clamp(34px,8vw,84px);font-weight:900;letter-spacing:.04em;
+    background:linear-gradient(90deg,#ffd54d,#ff7a59,#ff5fa8,#7c8cff,#5ec8ff);-webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 4px 18px rgba(0,0,0,.6))}
+  #congrats.show h1{animation:pop .6s cubic-bezier(.2,1.6,.4,1)}
+  #congrats p{margin:8px 0 0;font-size:20px;font-weight:700;text-shadow:0 2px 8px #000}
+  @keyframes pop{0%{transform:scale(.3)}100%{transform:scale(1)}}
+  .confetti{position:fixed;top:50%;left:50%;width:10px;height:14px;border-radius:2px;pointer-events:none;
+    animation:fly 1.4s ease-out forwards}
+  @keyframes fly{to{transform:translate(var(--dx),var(--dy)) rotate(var(--r));opacity:0}}
+  #gameover{position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:10px 22px;border-radius:12px;
+    background:rgba(255,93,108,.18);border:1px solid var(--bad);font-weight:900;font-size:22px;letter-spacing:.1em;display:none;pointer-events:none;text-align:center}
+  #gameover small{display:block;font-size:12px;font-weight:600;letter-spacing:0;color:var(--muted)}
+  #toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);padding:10px 18px;border-radius:10px;background:rgba(0,0,0,.6);
+    font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none}
+  #toast.show{opacity:1}
+  @media (max-width:560px){
+    #hud{gap:6px}
+    .title{font-size:18px;margin-right:2px}
+    .box{padding:4px 8px;min-width:0;flex:1}
+    .box small{font-size:10px}
+    .box b{font-size:16px}
+    .spacer{flex-basis:100%;height:0}
+    button{flex:1;padding:0 8px;font-size:14px}
+    #gameover{top:calc(env(safe-area-inset-top) + 130px)}
+    #hint{font-size:11px}
+    #status{font-size:13px}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="ov"></canvas>
+
+<div id="hud">
+  <div class="title">3D <span>2048</span></div>
+  <div class="box"><small>SCORE</small><b id="score">0</b></div>
+  <div class="box"><small>BEST</small><b id="best">0</b></div>
+  <div class="box"><small>MAX</small><b id="max">0</b></div>
+  <div class="spacer"></div>
+  <button id="rot" title="開啟後單指拖曳一律旋轉">ROTATE</button>
+  <button id="undo">UNDO</button>
+  <button id="reset">RESET</button>
+</div>
+
+<div id="gameover">GAME OVER<small>可以 UNDO 或 RESET</small></div>
+<div id="status"></div>
+<div id="toast"></div>
+<div id="congrats"><h1>CONGRATULATIONS!</h1><p id="congratsText"></p></div>
+<div id="hint">在立方體上按住拖曳＝沿該邊滑動合併 ｜ 在空白處拖曳 / 右鍵拖曳＝旋轉 ｜ 滾輪縮放 ｜ Ctrl+Z＝UNDO</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+/*!
+ * 3D 2048
+ * Copyright (c) 2026 YI-CHEN, YOU
+ * Released under the MIT License. See LICENSE.
+ * Uses three.js (MIT, Copyright © 2010-2023 three.js authors).
+ */
+import * as THREE from 'three';
+
+/* ================= 可調參數 ================= */
+const N = 4;                 // 立方體每邊格數 (4x4x4)
+const GAP = 1.15;            // 格距
+const SIZE = 0.9;            // 方塊邊長
+const UNDO_LIMIT = 3;        // 每次 RESET 後可用的 UNDO 次數
+const ANGLE_TOL = 22;        // 拖曳方向與邊的最大夾角 (度)，超過即不合法
+const MIN_DRAG = 30;         // 最短拖曳距離 (px)
+const FORESHORTEN = 0.35;    // 某軸投影長度 < 最長軸的此比例時視為「幾乎朝向鏡頭」，不可選
+const ACHIEVEMENT_MIN = 4;   // 融合出的數 >= 此值且創本局新高才跳出 CONGRATULATIONS
+const PALETTE = ['#5ec8ff','#4fe3b0','#a5e05a','#ffd84d','#ffa24d','#ff6b5e',
+                 '#ff5fa8','#c77dff','#7c8cff','#e8f0ff','#ffd700'];   // 2,4,8,...,2048
+const AXIS_NAME = ['X','Y','Z'];
+
+/* ================= Three.js 場景 ================= */
+const canvas = document.getElementById('c');
+const ov = document.getElementById('ov');
+const octx = ov.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+let zoom = 1;
+
+scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+const d1 = new THREE.DirectionalLight(0xffffff, 2.2); d1.position.set(5, 8, 10); scene.add(d1);
+const d2 = new THREE.DirectionalLight(0x99aaff, 0.9); d2.position.set(-6, -4, -5); scene.add(d2);
+
+const root = new THREE.Group();
+root.quaternion.setFromEuler(new THREE.Euler(0.5, -0.65, 0));
+scene.add(root);
+
+const HALF = N * GAP / 2;
+const cellPos = i => (i - (N - 1) / 2) * GAP;
+const idx = (x, y, z) => x + N * (y + N * z);
+const coordOf = i => [i % N, (i / N | 0) % N, i / (N * N) | 0];
+
+// 外框：依軸分三組邊，拖曳時可高亮「沿著哪一組邊」
+const FRAME_COLOR = new THREE.Color(0x8494c8);
+const edgeGroups = [0, 1, 2].map(axis => {
+  const pts = [];
+  const [o1, o2] = [0, 1, 2].filter(k => k !== axis);
+  for (const s1 of [-1, 1]) for (const s2 of [-1, 1]) {
+    const a = [0, 0, 0], b = [0, 0, 0];
+    a[axis] = -HALF; b[axis] = HALF;
+    a[o1] = b[o1] = s1 * HALF; a[o2] = b[o2] = s2 * HALF;
+    pts.push(...a, ...b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: FRAME_COLOR.clone(), transparent: true, opacity: .55 }));
+  root.add(l);
+  return l;
+});
+function highlightAxis(axis, legal) {
+  edgeGroups.forEach((l, a) => {
+    if (a === axis) { l.material.color.set(legal ? 0x5dffa0 : 0xff5d6c); l.material.opacity = 1; }
+    else { l.material.color.copy(FRAME_COLOR); l.material.opacity = .55; }
+  });
+}
+
+// 格點標記
+{
+  const pts = [];
+  for (let i = 0; i < N ** 3; i++) { const [x, y, z] = coordOf(i); pts.push(cellPos(x), cellPos(y), cellPos(z)); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  root.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x8494c8, size: .07, transparent: true, opacity: .5, depthWrite: false })));
+}
+
+/* ================= 方塊外觀 ================= */
+const boxGeo = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
+const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+const matCache = new Map(), labelCache = new Map();
+
+function colorFor(v) {
+  const k = Math.log2(v);
+  return PALETTE[k - 1] ? new THREE.Color(PALETTE[k - 1]) : new THREE.Color().setHSL(((k * 47) % 360) / 360, .8, .6);
+}
+function mats(v) {
+  if (!matCache.has(v)) {
+    const col = colorFor(v);
+    matCache.set(v, {
+      body: new THREE.MeshPhysicalMaterial({ color: col, emissive: col, emissiveIntensity: .18, roughness: .25,
+        clearcoat: .7, transparent: true, opacity: .45, depthWrite: false }),
+      edge: new THREE.LineBasicMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), .5), transparent: true, opacity: .9, depthWrite: false }),
+    });
+  }
+  return matCache.get(v);
+}
+function labelMat(v) {
+  if (!labelCache.has(v)) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d'); const s = String(v);
+    const fs = s.length <= 2 ? 150 : s.length === 3 ? 115 : s.length === 4 ? 88 : 70;
+    g.font = `900 ${fs}px system-ui, Arial, sans-serif`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineJoin = 'round'; g.lineWidth = 16; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(s, 128, 138);
+    g.fillStyle = '#fff'; g.fillText(s, 128, 138);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    labelCache.set(v, new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+  }
+  return labelCache.get(v);
+}
+
+function makeTile(v, x, y, z) {
+  const m = mats(v);
+  const group = new THREE.Group();
+  // 建立順序 body → edge → label：同深度時依 id 排序，數字會畫在自己方塊之後
+  const body = new THREE.Mesh(boxGeo, m.body);
+  const edge = new THREE.LineSegments(edgeGeo, m.edge);
+  const label = new THREE.Sprite(labelMat(v)); label.scale.set(.72, .72, 1);
+  group.add(body, edge, label);
+  group.position.set(cellPos(x), cellPos(y), cellPos(z));
+  root.add(group);
+  return { v, x, y, z, group, body, edge, label };
+}
+function refreshTile(t) {
+  const m = mats(t.v);
+  t.body.material = m.body; t.edge.material = m.edge; t.label.material = labelMat(t.v);
+}
+
+/* ================= 補間動畫 ================= */
+const tweens = [];
+const easeOut = p => 1 - (1 - p) ** 3;
+function tween(dur, fn, done) { tweens.push({ t0: performance.now(), dur, fn, done }); }
+function updateTweens(now) {
+  for (let i = 0; i < tweens.length; i++) {
+    const tw = tweens[i];
+    const p = Math.min(1, Math.max(0, (now - tw.t0) / tw.dur));
+    tw.fn(easeOut(p));
+    if (p >= 1) { tweens.splice(i--, 1); tw.done && tw.done(); }
+  }
+}
+function flushTweens() { // 立即完成所有動畫（連續快速操作時）
+  while (tweens.length) { const tw = tweens.shift(); tw.fn(1); tw.done && tw.done(); }
+}
+
+/* ================= 遊戲狀態 ================= */
+let grid, score, undoLeft, history, runMax, over;
+let best = 0;
+try { best = +localStorage.getItem('3d2048-best') || 0; } catch (e) {}
+
+const $ = id => document.getElementById(id);
+
+function clearTiles() { if (grid) for (const t of grid) if (t) root.remove(t.group); }
+
+function newGame() {
+  flushTweens(); clearTiles();
+  grid = Array(N ** 3).fill(null);
+  score = 0; undoLeft = UNDO_LIMIT; history = []; runMax = 0; over = false;
+  $('gameover').style.display = 'none';
+  spawn(); spawn();
+  updateHUD();
+}
+
+function spawn() {
+  const empty = [];
+  grid.forEach((t, i) => { if (!t) empty.push(i); });
+  if (!empty.length) return;
+  const i = empty[Math.random() * empty.length | 0];
+  const t = makeTile(Math.random() < .9 ? 2 : 4, ...coordOf(i));
+  grid[i] = t;
+  t.group.scale.setScalar(.01);
+  tween(180, p => t.group.scale.setScalar(Math.max(.01, p)));
+}
+
+function canMove() {
+  for (let i = 0; i < N ** 3; i++) {
+    const t = grid[i]; if (!t) return true;
+    const c = coordOf(i);
+    for (let a = 0; a < 3; a++) {
+      if (c[a] + 1 < N) { const d = [...c]; d[a]++; const u = grid[idx(...d)]; if (!u || u.v === t.v) return true; }
+    }
+  }
+  return false;
+}
+
+function move(axis, dir) {
+  if (over) return false;
+  flushTweens();
+  const snap = { vals: grid.map(t => t ? t.v : 0), score };
+  const ng = Array(N ** 3).fill(null);
+  const plan = [], merges = [];
+  let moved = false, gained = 0, maxMerge = 0;
+  const [o1, o2] = [0, 1, 2].filter(k => k !== axis);
+  const at = (k, i, j) => { const c = [0, 0, 0]; c[axis] = k; c[o1] = i; c[o2] = j; return c; };
+
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    // 由移動方向的最前端開始收集這一列
+    const line = [];
+    for (let s = 0; s < N; s++) {
+      const t = grid[idx(...at(dir > 0 ? N - 1 - s : s, i, j))];
+      if (t) line.push(t);
+    }
+    const out = [];
+    for (const t of line) {
+      const last = out[out.length - 1];
+      if (last && !last.partner && last.tile.v === t.v) last.partner = t;
+      else out.push({ tile: t });
+    }
+    out.forEach((e, s) => {
+      const c = at(dir > 0 ? N - 1 - s : s, i, j);
+      const t = e.tile;
+      if (t.x !== c[0] || t.y !== c[1] || t.z !== c[2]) moved = true;
+      const to = new THREE.Vector3(cellPos(c[0]), cellPos(c[1]), cellPos(c[2]));
+      plan.push({ tile: t, from: t.group.position.clone(), to });
+      if (e.partner) {
+        moved = true;
+        const nv = t.v * 2;
+        gained += nv; maxMerge = Math.max(maxMerge, nv);
+        plan.push({ tile: e.partner, from: e.partner.group.position.clone(), to, remove: true });
+        merges.push(t);
+        t.v = nv;
+      }
+      [t.x, t.y, t.z] = c;
+      ng[idx(...c)] = t;
+    });
+  }
+
+  if (!moved) { toast('這個方向無法移動'); return false; }
+
+  history.push(snap);
+  grid = ng;
+  score += gained;
+  if (score > best) { best = score; try { localStorage.setItem('3d2048-best', best); } catch (e) {} }
+
+  tween(130, p => { for (const s of plan) s.tile.group.position.lerpVectors(s.from, s.to, p); }, () => {
+    for (const s of plan) if (s.remove) root.remove(s.tile.group);
+    for (const t of merges) {
+      refreshTile(t);
+      tween(160, p => t.group.scale.setScalar(1 + .28 * Math.sin(Math.PI * p)), () => t.group.scale.setScalar(1));
+    }
+    spawn();
+    if (!canMove()) { over = true; $('gameover').style.display = 'block'; }
+    updateHUD();
+  });
+
+  // 新成就：本次 RESET 後融合出的最大數創新高（UNDO 不會撤銷成就紀錄，避免重複觸發）
+  if (maxMerge > runMax) {
+    runMax = maxMerge;
+    if (maxMerge >= ACHIEVEMENT_MIN) congrats(maxMerge);
+  }
+  updateHUD();
+  return true;
+}
+
+function undo() {
+  if (!history.length) { toast('沒有可以復原的步驟'); return; }
+  if (undoLeft <= 0) { toast('UNDO 次數已用完'); return; }
+  flushTweens();
+  const s = history.pop();
+  undoLeft--;
+  clearTiles();
+  grid = s.vals.map((v, i) => v ? makeTile(v, ...coordOf(i)) : null);
+  score = s.score;
+  over = false; $('gameover').style.display = 'none';
+  updateHUD();
+}
+
+function updateHUD() {
+  $('score').textContent = score;
+  $('best').textContent = best;
+  $('max').textContent = grid.reduce((m, t) => t ? Math.max(m, t.v) : m, 0);
+  const u = $('undo');
+  u.textContent = `UNDO (${undoLeft})`;
+  u.disabled = undoLeft <= 0 || history.length === 0;
+}
+
+/* ================= 提示 / 成就 ================= */
+let toastTimer, congratsTimer;
+function toast(msg) {
+  const el = $('toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 900);
+}
+function congrats(v) {
+  const el = $('congrats');
+  $('congratsText').textContent = `新成就解鎖：融合出 ${v}！`;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  clearTimeout(congratsTimer); congratsTimer = setTimeout(() => el.classList.remove('show'), 1800);
+  const col = '#' + colorFor(v).getHexString();
+  const colors = [col, '#ffd54d', '#ff5fa8', '#5ec8ff', '#5dffa0'];
+  for (let i = 0; i < 40; i++) {
+    const p = document.createElement('div'); p.className = 'confetti';
+    const a = Math.random() * Math.PI * 2, r = 150 + Math.random() * 300;
+    p.style.background = colors[i % colors.length];
+    p.style.setProperty('--dx', Math.cos(a) * r + 'px');
+    p.style.setProperty('--dy', Math.sin(a) * r + 'px');
+    p.style.setProperty('--r', (Math.random() * 720 - 360) + 'deg');
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 1500);
+  }
+}
+
+/* ================= 拖曳方向判定 ================= */
+// 將立方體三個軸（= 三組邊）投影到螢幕，取得螢幕上的方向向量
+function screenAxis(axis) {
+  const w = innerWidth, h = innerHeight;
+  const p0 = new THREE.Vector3().applyMatrix4(root.matrixWorld).project(camera);
+  const v = new THREE.Vector3(); v.setComponent(axis, HALF);
+  const p1 = v.applyMatrix4(root.matrixWorld).project(camera);
+  return { x: (p1.x - p0.x) * w / 2, y: -(p1.y - p0.y) * h / 2 };
+}
+function evalDrag(dx, dy) {
+  const len = Math.hypot(dx, dy);
+  if (len < MIN_DRAG) return { state: 'short' };
+  const axes = [0, 1, 2].map(a => { const s = screenAxis(a); return { a, s, L: Math.hypot(s.x, s.y) }; });
+  const maxL = Math.max(...axes.map(o => o.L));
+  let bestC = null;
+  for (const o of axes) {
+    if (o.L < maxL * FORESHORTEN) continue;           // 這組邊幾乎正對鏡頭，方向不明確
+    const dot = (dx * o.s.x + dy * o.s.y) / (len * o.L);
+    const angle = Math.acos(Math.min(1, Math.abs(dot))) * 180 / Math.PI;
+    if (!bestC || angle < bestC.angle) bestC = { axis: o.a, dir: dot >= 0 ? 1 : -1, angle, s: o.s, L: o.L };
+  }
+  if (!bestC) return { state: 'none' };
+  return { state: bestC.angle <= ANGLE_TOL ? 'ok' : 'bad', ...bestC };
+}
+
+/* ================= 滑鼠 / 觸控 ================= */
+const raycaster = new THREE.Raycaster();
+const cubeBox = new THREE.Box3(new THREE.Vector3(-HALF, -HALF, -HALF), new THREE.Vector3(HALF, HALF, HALF));
+function hitCube(cx, cy) {
+  raycaster.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
+  const local = raycaster.ray.clone().applyMatrix4(root.matrixWorld.clone().invert());
+  return local.intersectsBox(cubeBox);
+}
+
+let drag = null;      // 單指 / 滑鼠拖曳
+let pinch = null;     // 雙指：旋轉 + 縮放
+let rotateMode = false;
+const pointers = new Map();
+const qTmp = new THREE.Quaternion();
+const AX_X = new THREE.Vector3(1, 0, 0), AX_Y = new THREE.Vector3(0, 1, 0);
+const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+
+function rotateBy(dx, dy) {
+  qTmp.setFromAxisAngle(AX_Y, dx * .008); root.quaternion.premultiply(qTmp);
+  qTmp.setFromAxisAngle(AX_X, dy * .008); root.quaternion.premultiply(qTmp);
+}
+function twoFinger() {
+  const [a, b] = [...pointers.values()];
+  return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
+}
+function clearDragUI() { highlightAxis(-1); $('status').className = ''; }
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {           // 第二根手指放下：取消滑動，改成雙指旋轉/縮放
+    drag = null; clearDragUI();
+    const t = twoFinger();
+    pinch = { cx: t.cx, cy: t.cy, d0: t.d, z0: zoom };
+    return;
+  }
+  if (pointers.size > 2) return;
+  const slide = e.button === 0 && !e.shiftKey && !rotateMode && hitCube(e.clientX, e.clientY);
+  drag = { id: e.pointerId, mode: slide ? 'slide' : 'rotate', x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, res: null };
+  canvas.style.cursor = slide ? 'crosshair' : 'grabbing';
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) {
+    if (pointers.size >= 2) {
+      const t = twoFinger();
+      rotateBy(t.cx - pinch.cx, t.cy - pinch.cy);
+      pinch.cx = t.cx; pinch.cy = t.cy;
+      zoom = Math.min(1.8, Math.max(.6, pinch.z0 * pinch.d0 / t.d));
+      updateCamera();
+    }
+    return;
+  }
+  if (!drag || e.pointerId !== drag.id) {
+    if (e.pointerType === 'mouse') canvas.style.cursor = (!rotateMode && hitCube(e.clientX, e.clientY)) ? 'pointer' : 'grab';
+    return;
+  }
+  if (drag.mode === 'rotate') {
+    rotateBy(e.clientX - drag.lx, e.clientY - drag.ly);
+  } else {
+    drag.res = evalDrag(e.clientX - drag.x0, e.clientY - drag.y0);
+    showDragStatus(drag.res);
+  }
+  drag.lx = e.clientX; drag.ly = e.clientY;
+});
+function endDrag(e, cancel) {
+  pointers.delete(e.pointerId);
+  if (pinch) {                         // 雙指結束後剩下的手指不再觸發任何動作
+    if (pointers.size < 2) pinch = null;
+    drag = null;
+    return;
+  }
+  if (!drag || e.pointerId !== drag.id) return;
+  if (!cancel && drag.mode === 'slide') {
+    const r = evalDrag(e.clientX - drag.x0, e.clientY - drag.y0);
+    if (r.state === 'ok') { if (move(r.axis, r.dir)) vibrate(12); else vibrate(30); }
+    else if (r.state === 'bad') { toast(`角度偏差 ${r.angle.toFixed(0)}° 過大，不是合法拖曳`); vibrate(30); }
+    else if (r.state === 'none') toast('方向不明確，請先轉動立方體');
+  }
+  drag = null;
+  clearDragUI();
+  canvas.style.cursor = 'grab';
+}
+canvas.addEventListener('pointerup', e => endDrag(e, false));
+canvas.addEventListener('pointercancel', e => endDrag(e, true));
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom = Math.min(1.8, Math.max(.6, zoom * (e.deltaY > 0 ? 1.08 : 1 / 1.08)));
+  updateCamera();
+}, { passive: false });
+// iOS Safari 的手勢縮放事件
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+function showDragStatus(r) {
+  const st = $('status');
+  if (r.state === 'short') { st.className = ''; highlightAxis(-1); return; }
+  if (r.state === 'none') { st.textContent = '方向不明確'; st.className = 'show bad'; highlightAxis(-1); return; }
+  const name = (r.dir > 0 ? '+' : '−') + AXIS_NAME[r.axis];
+  highlightAxis(r.axis, r.state === 'ok');
+  if (r.state === 'ok') { st.textContent = `沿 ${name} 邊滑動 · 偏差 ${r.angle.toFixed(0)}°`; st.className = 'show ok'; }
+  else { st.textContent = `最接近 ${name} 邊，但偏差 ${r.angle.toFixed(0)}° > ${ANGLE_TOL}°`; st.className = 'show bad'; }
+}
+
+// 2D 覆蓋層：畫出拖曳線與吸附的邊方向
+function drawOverlay() {
+  const dpr = ov.width / innerWidth;
+  octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  octx.clearRect(0, 0, innerWidth, innerHeight);
+  if (!drag || drag.mode !== 'slide' || !drag.res || drag.res.state === 'short') return;
+  const r = drag.res, x0 = drag.x0, y0 = drag.y0;
+  const col = r.state === 'ok' ? '#5dffa0' : '#ff5d6c';
+  const len = Math.hypot(drag.lx - x0, drag.ly - y0);
+  if (r.s) { // 吸附方向（虛線 + 箭頭）
+    const ux = r.s.x / r.L * r.dir, uy = r.s.y / r.L * r.dir;
+    const ex = x0 + ux * len, ey = y0 + uy * len;
+    octx.setLineDash([8, 6]); octx.lineWidth = 3; octx.strokeStyle = col; octx.globalAlpha = .9;
+    octx.beginPath(); octx.moveTo(x0, y0); octx.lineTo(ex, ey); octx.stroke();
+    octx.setLineDash([]);
+    const a = Math.atan2(uy, ux);
+    octx.fillStyle = col; octx.beginPath();
+    octx.moveTo(ex + Math.cos(a) * 12, ey + Math.sin(a) * 12);
+    octx.lineTo(ex + Math.cos(a + 2.5) * 12, ey + Math.sin(a + 2.5) * 12);
+    octx.lineTo(ex + Math.cos(a - 2.5) * 12, ey + Math.sin(a - 2.5) * 12);
+    octx.fill();
+    // 合法角度扇形
+    const tol = ANGLE_TOL * Math.PI / 180;
+    octx.globalAlpha = .12; octx.beginPath(); octx.moveTo(x0, y0);
+    octx.arc(x0, y0, len, a - tol, a + tol); octx.closePath(); octx.fill();
+  }
+  octx.globalAlpha = 1; octx.lineWidth = 2; octx.strokeStyle = '#ffffff';
+  octx.beginPath(); octx.moveTo(x0, y0); octx.lineTo(drag.lx, drag.ly); octx.stroke();
+  octx.fillStyle = '#fff'; octx.beginPath(); octx.arc(x0, y0, 4, 0, Math.PI * 2); octx.fill();
+}
+
+/* ================= 按鈕 / 鍵盤 ================= */
+$('undo').addEventListener('click', undo);
+$('reset').addEventListener('click', newGame);
+$('rot').addEventListener('click', () => {
+  rotateMode = !rotateMode;
+  $('rot').classList.toggle('on', rotateMode);
+  toast(rotateMode ? '旋轉模式：單指拖曳只會旋轉' : '一般模式：在立方體上拖曳＝滑動');
+});
+if (matchMedia('(pointer: coarse)').matches) {
+  $('hint').textContent = '單指在立方體上拖曳＝滑動合併 ｜ 空白處單指或雙指拖曳＝旋轉 ｜ 雙指捏合＝縮放';
+}
+addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+});
+
+/* ================= 主迴圈 ================= */
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  const dpr = Math.min(devicePixelRatio, 2);
+  ov.width = w * dpr; ov.height = h * dpr;
+  camera.aspect = w / h;
+  updateCamera();
+}
+function updateCamera() {
+  // 直式手機畫面較窄，自動拉遠鏡頭，讓立方體完整入鏡並留出旋轉用的空白
+  camera.position.set(0, 0, 15 * zoom * Math.max(1, 1.1 / camera.aspect));
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+newGame();
+
+renderer.setAnimationLoop(now => {
+  updateTweens(now);
+  root.updateMatrixWorld();
+  renderer.render(scene, camera);
+  drawOverlay();
+});
+</script>
+</body>
+</html>
